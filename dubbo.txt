@@ -1,0 +1,250 @@
+rmi://192.168.1.5:20881/com.cxf.dubbo.service.BookService?anyhost=true
+&application=dubboProvider
+&dubbo=2.5.7
+&generic=Dfalse
+&getOneBook.loadbalance=roundrobin
+&interface=com.cxf.dubbo.service.BookService
+&methods=getOneBook
+&pid=25488
+&revision=0.0.1-SNAPSHOT
+&side=provider
+&timestamp=1541257536764,
+dubbo://192.168.1.5:20880/com.cxf.dubbo.service.BookService?
+anyhost=true
+&application=dubboProvider
+&dubbo=2.5.7
+&generic=false
+&getOneBook.loadbalance=roundrobin
+&interface=com.cxf.dubbo.service.BookService
+&methods=getOneBook
+&pid=25488
+&revision=0.0.1-SNAPSHOT
+&side=provider
+&timestamp=1541257536554
+多协议暴露同一个服务（同一个接口（相同实现或者不同实现））都在一个节点上，用逗号隔开，多台机服务器呢？====>肯定是另一个providers下的临时节点
+每台服务器的应用名应该不一样来区分
+[zk: localhost:2181(CONNECTED) 6] ls /dubbo/com.cxf.dubbo.service.BikeService
+[consumers, configurators, routers, providers]
+===========================================
+rmi://192.168.1.5:20881/com.cxf.dubbo.service.BikeService?
+anyhost=true
+&application=dubboProvider
+&dubbo=2.5.7
+&generic=false
+&interface=com.cxf.dubbo.service.BikeService
+&methods=qryAllBike&pid=25488
+&qryAllBike.loadbalance=roundrobin
+&revision=0.0.1-SNAPSHOT
+&side=provider
+&timestamp=1541257515106
+默认每个协议都会暴露===>如果指定了一个就只暴露一个
+===========================================
+<dubbo:application name="dubboProvider" />一定要配置，不然启动报错,而且name是必填属性，没有id属性
+<dubbo:application name="dubboProvider" version="2" owner="cxf" compiler="jdk"/> 配置了compiler会报错
+<dubbo:protocol name="dubbo" port="20880" default="true"/> 如果有多个protocol标签配置，除了defaul=false都会暴露
+<dubbo:service ref="bookServiceImpl"	interface="com.cxf.dubbo.service.BookService" protocol="rmi,dubbo">暴露多个用逗号隔开
+==========================================
+dubbo://2F192.168.1.5:20880/com.cxf.dubbo.service.BikeService?
+anyhost=true
+&application=dubboProvider
+&application.version=2
+&default=true
+&dubbo=2.5.7
+&generic=false
+&group=two
+&interface=com.cxf.dubbo.service.BikeService
+&methods=qryAllBike
+&owner=cxf
+&pid=25956
+&qryAllBike.loadbalance=roundrobin
+&queue=your_queue ====>自定义的参数
+&revision=0.0.1-SNAPSHOT
+&side=provider
+&timestamp=1541293270559,
+dubbo://192.168.1.5:20880/com.cxf.dubbo.service.BikeService?
+anyhost=true
+&application=dubboProvider
+&application.version=2
+&default=true
+&dubbo=2.5.7
+&generic=false
+&group=one
+&interface=com.cxf.dubbo.service.BikeService
+&methods=qryAllBike
+&owner=cxf
+&pid=25956
+&qryAllBike.loadbalance=roundrobin
+&queue=your_queue
+&revision=0.0.1-SNAPSHOT
+&side=provider
+&timestamp=1541293249920]
+
+ 分组暴露=====>相同接口有多种实现（+impl名字好像很重要），要用组来区分，
+ 消费端是直接引用接口的，也要用对应的组来区分，如果不用组来区分会报错，也可以用group="*"来随机一个实现
+ =========================
+ 当1个接口实现，出现不兼容升级时，可以用版本号过渡，版本号不同的服务相互间不引
+ <dubbo:service interface="com.foo.BarService" version="1.0.0" />
+ <dubbo:service interface="com.foo.BarService" version="2.0.0" />
+ 1. 在低压的时间段，先升级1半提供者为新2. 再将所有消费者升级为新版本3. 然后将剩下的1半提供者升级为
+ 先升级一半提供者，这时候消费者用的是旧版本，再将消费者升级为新版本，消费者可以直接用新版本，然后将剩下的旧版本提供者全部升级
+ ==================================================================
+ 多注册中心用逗号分开，和协议有点相似
+ <dubbo:service interface="com.alibaba.hello.api.HelloService" version="1.0.0"
+ ref="helloService" registry="hangzhouRegistry,qingdaoRegistry" />
+
+================================================
+dubbo的分组聚合==>配置是在消费端
+Bike{id=3, bikeName='cc'}
+Bike{id=4, bikeName='dd'}
+Bike{id=1, bikeName='AA'}
+Bike{id=2, bikeName='BB'}
+<dubbo:reference id="bikeService" group = "*"	interface="com.cxf.dubbo.service.BikeService"  merger="true"/>
+如果返回的值不是集合而是简单对象或者基本类型会报错。因为没有容器可以聚合
+com.alibaba.dubbo.rpc.RpcException: There is no merger to merge result.
+=======================================
+
+ 参数验证？
+ 
+ ======
+ 结果户缓存
+ 
+ ================
+ 泛化调用，生产端不变 消费端因为没有com.cxf.inteface.BarServicejie接口，所以需要添加 generic="true"实现泛化调用
+ <dubbo:reference id="barService" interface="com.cxf.inteface.BarService" generic="true"/>
+ 
+ public class ServiceTest
+{
+
+	private ApplicationContext ctx = null;
+	private  GenericService genericService = null;
+
+	@Before
+	public void setUp() throws Exception
+	{
+		ctx = new ClassPathXmlApplicationContext("classpath:dubbo/dubbo-*.xml");
+		genericService = (GenericService)ctx.getBean("barService");
+	}
+
+	@Test
+	public void test()
+	{
+		//获取到相应的id的bean其实现是一个GenericService类型其中
+		//然后调用GenericService的$invoke的方法，该方法有三个参数，
+		//第一个参数是你调用远程接口的具体方法名，第二个参数是getOneBike这个方法的入参的类型，最后一个参数是值。 
+		//显然可以传多个参数
+		Object result = genericService.$invoke("getOneBike",new String[]{"java.lang.Integer"},new Object[]{1});
+		System.out.println(result);
+
+		try {
+			Thread.sleep(1000);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+	}
+ }
+ =============================================================================
+ 所有服务⾃动实现 EchoService 接口，只需将任意服务引用强制转型为 EchoService ，即可使用
+	@Test
+	public void test1()
+	{
+		EchoService echoService = (EchoService) ctx.getBean("bookService");
+		String status = (String) echoService.$echo("OK");
+		System.out.println(status.equals("OK"));
+		
+	}
+
+=================================================================================
+
+RpcContext 是一个 ThreadLocal 的临时状态记录器，当接收到 RPC 请求，或发起 RPC 请求时，RpcContext 的状态
+都会变化。例如：A 调 B，B 再调 C，则 B 机器上，在 B 调 C 之前，RpcContext 记录的是 A 调 B 的信息，在 B 调 C
+之后，RpcContext 记录的是 B 调 C 的信息
+
+=================================================================================
+隐式参数
+可以通过 RpcContext 上的 setAttachment 和 getAttachment 在服务消费端和提供端之间进形参数的隐式传递。
+
+	@Test
+	public void test2()
+	{
+		//setAttachment 设置的 KV 对，在完成下次远程调前会被清空，即多次远程调需要要多次设置。
+		RpcContext.getContext().setAttachment("index", "1");
+		BookService bookService = (BookService) ctx.getBean("bookService");
+		Book book = bookService.getOneBook(10);
+		System.out.println(book);
+
+	}
+	
+	
+public class BookServiceImpl implements BookService {
+    @Override
+    public Book getOneBook(int i) {
+		//获取隐式参数
+        String index = RpcContext.getContext().getAttachment("index");
+		
+		//比较String application = RpcContext.getContext().getUrl().getParameter("application");
+        System.out.println("==================>"+index);
+        return new Book("三国演义",1);
+    }
+}
+==================================================================================
+
+consumer://192.168.1.5/com.cxf.dubbo.service.BookService?application=dubboConsumer
+&category=consumers
+&check=false
+&dubbo=2.5.7
+&group=one
+&interface=com.cxf.dubbo.service.BookService
+&methods=getOneBook
+&pid=29648
+&side=consumer
+&timestamp=1541325495633
+
+==================================================
+异步调用
+BookService bookService = (BookService) ctx.getBean("bookService");
+	//首先直接返回null，
+
+	List<Book> books = bookService.qryAllBook();
+	System.out.println(books);
+	//获取引用
+	Future<Book> future = RpcContext.getContext().getFuture();
+
+	try {
+		//阻塞直到返回结果
+		System.out.println(future.get());
+	} catch (InterruptedException e) {
+		e.printStackTrace();
+	} catch (ExecutionException e) {
+		e.printStackTrace();
+}
+
+null
+[Book{name='java', version=1}, Book{name='golang', version=2}]
+
+[dubbo://192.168.1.5:20880/com.cxf.dubbo.service.BookService?
+anyhost=true
+&application=dubboProvider
+&application.version=2
+&default=true
+&dubbo=2.5.7
+&generic=false
+&getOneBook.loadbalance=roundrobin
+&group=one
+&interface=com.cxf.dubbo.service.BookService
+&methods=qryAllBook|getOneBook
+&owner=cxf
+&pid=29348
+&qryAllBook.async=true
+&qryAllBook.loadbalance=roundrobin
+&queue=your_queue
+&revision=0.0.1-SNAPSHOT
+&side=provider
+&timestamp=1541335471732, 
+rmi%3A%2F%2F192.168.1.5%3A20881%2Fcom.cxf.dubbo.service.BookService2%3Fanyhost=true&application=dubboProvider&application.version=2&default=false&dubbo=2.5.7&generic=false&getOneBook.loadbalance=random&group=two&interface=com.cxf.dubbo.service.BookService&methods=qryAllBook%2CgetOneBook&owner=cxf&pid=29348&revision=0.0.1-SNAPSHOT&side=provider&timestamp=1541335471750,
+rmi%3A%2F%2F192.168.1.5%3A20881%2Fcom.cxf.dubbo.service.BookService%3Fanyhost=true&application=dubboProvider&application.version=2&default=false&dubbo=2.5.7&generic=false&getOneBook.loadbalance=roundrobin&group=one&interface=com.cxf.dubbo.service.BookService&methods=qryAllBook%2CgetOneBook&owner=cxf&pid=29348&qryAllBook.async=true&qryAllBook.loadbalance=roundrobin&revision=0.0.1-SNAPSHOT&side=provider&timestamp=1541335470670, 
+dubbo%3A%2F%2F192.168.1.5%3A20880%2Fcom.cxf.dubbo.service.BookService2%3Fanyhost=true&application=dubboProvider&application.version=2&default=true&dubbo=2.5.7&generic=false&getOneBook.loadbalance=random&group=two&interface=com.cxf.dubbo.service.BookService&methods=qryAllBook%2CgetOneBook&owner=cxf&pid=29348&queue=your_queue&revision=0.0.1-SNAPSHOT&side=provider&timestamp=1541335471779]
+===================================
+参数回调（服务端调用客户端逻辑）
+
+参数回调模式与调用本地 callback 或 listener 相同，只需要在 Spring 件中声明哪个参数是 callback 类型即
+可。Dubbo 将基于长连接生成反向代理，这样就可以从服务器端调用客户端逻辑 。
