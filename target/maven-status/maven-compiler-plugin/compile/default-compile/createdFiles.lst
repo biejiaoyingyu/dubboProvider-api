@@ -1,0 +1,6 @@
+com\cxf\dubbo\service\BookService.class
+com\cxf\dubbo\service\CallbackService.class
+com\cxf\dubbo\entities\Bike.class
+com\cxf\dubbo\entities\Book.class
+com\cxf\dubbo\callBack\CallBackListener.class
+com\cxf\dubbo\service\BikeService.class

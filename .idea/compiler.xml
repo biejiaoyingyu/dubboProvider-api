@@ -8,12 +8,14 @@
         <outputRelativeToContentRoot value="true" />
         <module name="dubboConsumer" />
         <module name="dubboProvider" />
+        <module name="dubboProvider (1)" />
         <module name="dubboProvider-api" />
       </profile>
     </annotationProcessing>
     <bytecodeTargetLevel>
       <module name="dubboConsumer" target="1.8" />
       <module name="dubboProvider" target="1.8" />
+      <module name="dubboProvider (1)" target="1.8" />
       <module name="dubboProvider-api" target="1.8" />
     </bytecodeTargetLevel>
   </component>

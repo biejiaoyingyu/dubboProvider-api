@@ -4,7 +4,6 @@
     <modules>
       <module fileurl="file://$PROJECT_DIR$/../dubboConsumer/dubboConsumer.iml" filepath="$PROJECT_DIR$/../dubboConsumer/dubboConsumer.iml" />
       <module fileurl="file://$PROJECT_DIR$/../dubboProvider/dubboProvider.iml" filepath="$PROJECT_DIR$/../dubboProvider/dubboProvider.iml" />
-      <module fileurl="file://$PROJECT_DIR$/../dubboProvider/dubboProvider.iml" filepath="$PROJECT_DIR$/../dubboProvider/dubboProvider.iml" />
       <module fileurl="file://$PROJECT_DIR$/dubboProvider-api.iml" filepath="$PROJECT_DIR$/dubboProvider-api.iml" />
     </modules>
   </component>
