@@ -129,7 +129,7 @@ com.alibaba.dubbo.rpc.RpcException: There is no merger to merge result.
 	@Test
 	public void test()
 	{
-		//获取到相应的id的bean其实现是一个GenericService类型其中
+		//获取到相应的id的bean其实现是一个GenericService类型
 		//然后调用GenericService的$invoke的方法，该方法有三个参数，
 		//第一个参数是你调用远程接口的具体方法名，第二个参数是getOneBike这个方法的入参的类型，最后一个参数是值。 
 		//显然可以传多个参数
@@ -144,6 +144,7 @@ com.alibaba.dubbo.rpc.RpcException: There is no merger to merge result.
 	}
  }
  =============================================================================
+ 回声测试
  所有服务⾃动实现 EchoService 接口，只需将任意服务引用强制转型为 EchoService ，即可使用
 	@Test
 	public void test1()
@@ -251,7 +252,8 @@ anyhost=true
 &getOneBook.loadbalance=random
 &group=two
 &interface=com.cxf.dubbo.service.BookService
-&methods=qryAllBook,getOneBook&owner=cxf
+&methods=qryAllBook,getOneBook
+&owner=cxf
 &pid=29348
 &revision=0.0.1-SNAPSHOT
 &side=provider&timestamp=1541335471750,
@@ -390,4 +392,255 @@ anyhost=true
 通知哪个类的哪个⽅法。
 http://makaidong.com/java-zhao/3846_16894866.html
 
+用户端不变
+客户端新增加通知类(对参数列表有一定要求--->因为要承接目标方法的属性)
+public class NotifyImpl implements Notify {
+
+    @Override
+    public void onreturn(Book book,Integer id) {
+        System.out.println("onreturn:" +id+"==============>" +book);
+    }
+
+    @Override
+    public void onthrow(Throwable ex, Integer id) {
+        System.out.println("onthrow:" + ex);
+    }
+
+    @Override
+    public void oninvoke(Integer id) {
+        System.out.println(id + "被调用");
+    }
+}
+
+增加配置=====>但是oninvoke="notifyImpl.oninvoke"这个加上测试通不过，很奇怪，而且没有找到原因
+<bean id="notifyImpl" class="entities.NotifyImpl"  />
+
+<dubbo:reference id = "onCallback" interface="com.cxf.dubbo.service.BookService" group="one" >
+    <dubbo:method name="getOneBook4Callback" async="false" oninvoke="notifyImpl.oninvoke" onreturn="notifyImpl.onreturn" onthrow="notifyImpl.onthrow" />
+</dubbo:reference>
+ method的参数不会显示到URL中
+[consumer://192.168.186.1/com.cxf.dubbo.service.BookService?
+application=dubboConsumer
+&category=consumers
+&check=false
+&dubbo=2.5.7
+&group=one
+&interface=com.cxf.dubbo.service.BookService
+&methods=qryAllBook
+&getOneBook4Callback,getOneBook
+&pid=13532
+&side=consumer
+&timestamp=1541468051708]
+
+==============================================================
+本地存根===>为了验证和容错或者说减轻服务端压力
+泛化调用是因为客户端没有相应的接口所以需要，常用于跨语言应用
+
+服务端配置不变
+public class UserServiceImpl implements UserService {
+    @Override
+    public User getUserById(Integer id) {
+        User user  = new User() ;
+        user.setAge(id);
+        user.setName("正常");
+        return user;
+    }
+}
+<dubbo:service interface="com.cxf.dubbo.service.UserService" ref="userServiceImpl" protocol="dubbo" retries="0"/>
+<bean id="userServiceImpl" class="com.cxf.dubbo.UserServiceImpl"/>
+客户端需要本地实现服务端相同的接口
+public class UserServiceStub implements UserService {
+
+    //必须定义这个接口，以便接收dubbo在调用远程服务生成的服务代理类
+    private UserService userLocalService ;
+
+    //这个构造函数必须要提供，dubbo框架会在消费者这一方调用这个方法
+    public UserServiceStub(UserService userLocalService ) {
+        this.userLocalService = userLocalService  ;
+    }
+    @Override
+    public User getUserById(Integer id) {
+        User user = null;
+        try {
+            // 此代码在客户端执⾏, 你可以在客户端做ThreadLocal本地缓存，或预先验证参数是否合法，等等
+            if (id == 1) {
+                //如果这里报错会被，异常会被捕获
+                user = this.userLocalService.getUserById(id);
+            } else {
+                user = new User();
+                user.setName("系统用户");
+            }
+        }catch(Exception e){
+            //容错处理
+            user = new User();
+            user.setName("异常用户");
+        }
+        return user;
+    }
+}
+
+<dubbo:reference id="userService" interface="com.cxf.dubbo.service.UserService" stub="clintimpl.UserServiceStub" protocol="dubbo"/>
+
+
+//执行入口是本地存根的实现方法进入，憨厚可以验证选择是否远程调用还是直接本地调用
+@Test
+public void test7() {
+    Integer id = 1;
+    UserService userService = (UserService)ctx.getBean("userService");
+    User user = userService.getUserById( id) ;
+    System.out.println(user.getName());
+}
+====================================================================
+本地伪装(是stub的一个子集，在客户端和服务端都可以使用，便于服务提供⽅在客户端执⾏容错逻辑，因经常需要在出现 RpcException (⽐如
+⽹络失败，超时等)时进⾏容错，⽽在出现业务异常(⽐如登录⽤户名密码错误)时不需要容错，如果⽤ Stub，可能
+就需要捕获并依赖 RpcException 类，⽽⽤ Mock 就可以不依赖 RpcException，因为它的约定就是只有出现
+RpcException 时才执⾏。 在 interface 旁放⼀个 Mock 实现，它实现 BarService 接⼝，并有⼀个⽆参构造函数)
+本地伪装 通常⽤于服务降级，⽐如某验权服务，当服务提供⽅全部挂掉后，客户端不抛出异常，⽽是通过 Mock 数据
+返回授权失败====>不知道怎么测试可能是方法不正确。？原因，因为别的标签没有mock所以启动就爆错了====>尴尬
+<dubbo:reference id="userService" interface="com.cxf.dubbo.service.UserService" stub="clintimpl.UserServiceStub" protocol="dubbo"/>
+服务提供端不变，本地的mock实现服务端的接口，然后设置为mock属性
+check属性要为false才可以
+1.远程服务全部掉线会自动走mock实现
+<dubbo:reference  id ="phoneService" interface="com.cxf.dubbo.service.PhoneService" mock="clintimpl.PhoneServiceMock" check="false" />
+2.实体类在不实现序列化接口情况下上面的调用会抛出RpcException异常 也会走mock实现
+
+=========================================================================
+spring2.x初始化死锁问题
+在 Spring 解析到 <dubbo:service /> 时，就已经向外暴露了服务，⽽ Spring 还在接着初始化其它 Bean。如果这时有
+请求进来，并且服务的实现类⾥有调⽤ applicationContext.getBean() 的⽤法。
+1. 请求线程的 applicationContext.getBean() 调⽤，先同步 singletonObjects 判断 Bean 是否存在，不存在就同步
+beanDefinitionMap 进⾏初始化，并再次同步 singletonObjects 写⼊ Bean 实例缓存
+2. ⽽ Spring 初始化线程，因不需要判断 Bean 的存在，直接同步 beanDefinitionMap 进⾏初始化，并同步singletonObjects
+写⼊ Bean 实例缓存。这样就导致 getBean 线程，先锁 singletonObjects，再锁 beanDefinitionMap，再次锁 singletonObjects。
+⽽ Spring 初始化线程，先锁 beanDefinitionMap，再锁 singletonObjects。反向锁导致线程死锁，不能提供服务，启动不了
+规避办法
+1. 强烈建议不要在服务的实现类中有 applicationContext.getBean() 的调⽤，全部采⽤ IoC 注⼊的⽅式使⽤ Spring的
+Bean。
+2. 如果实在要调 getBean()，可以将 Dubbo 的配置放在 Spring 的最后加载。
+3. 如果不想依赖配置顺序，可以使⽤ <dubbo:provider deplay=”-1” /> ，使 Dubbo 在 Spring 容器初始化完后，再暴
+露服务。
+4. 如果⼤量使⽤ getBean()，相当于已经把 Spring 退化为⼯⼚模式在⽤，可以将 Dubbo 的服务隔离单独的 Spring 容
+器
+
+总结：现在的版本好像就是延迟暴露
+================================================================================
+
+并发控制
+限制 com.foo.BarService 的每个⽅法，服务器端并发执⾏（或占⽤线程池线程数）不能超过 10 个
+<dubbo:service interface="com.foo.BarService" executes="10" />
+限制 com.foo.BarService 的 sayHello ⽅法，服务器端并发执⾏（或占⽤线程池线程数）不能超过 10 个：
+<dubbo:service interface="com.foo.BarService">
+    <dubbo:method name="sayHello" executes="10" />
+</dubbo:service>
+============>>>executes好像只有在服务端有<<<=============
+并发控制在服务端么？客户端可以控制么？
+
+
+限制 com.foo.BarService 的每个⽅法，每客户端并发执⾏（或占⽤连接的请求数）不能超过 10 个：
+<dubbo:service interface="com.foo.BarService" actives="10" />
+或
+<dubbo:reference interface="com.foo.BarService" actives="10" />
+
+限制 com.foo.BarService 的 sayHello ⽅法，每客户端并发执⾏（或占⽤连接的请求数）不能超过 10 个：
+<dubbo:service interface="com.foo.BarService">
+    <dubbo:method name="sayHello" actives="10" />
+</dubbo:service>
+或
+<dubbo:reference interface="com.foo.BarService">
+    <dubbo:method name="sayHello" actives="10" />
+</dubbo:service>
+如果 <dubbo:service> 和 <dubbo:reference> 都配了actives， <dubbo:reference> 优先
+
+=====================================================
+ 在介绍参数之前，我们先了解下dubbo中配置的优先级，以免出现调优参数设置了却没发现效果实际是配置被覆盖导致这样的问题。
+ dubbo分为consumer和provider端，在配置各个参数时，其优先级如下：
+
+1、consumer的method配置 
+
+2、provider的method配置
+
+3、consumer的reference配置
+
+4、provider的service配置
+
+5、consumer的consumer节点配置
+
+6、provider的provider节点配置
+
+可以看到，方法级的配置优先级高于接口级，consumer的优先级高于provider。同时，在本地参数配置还存在一层优先级：
+
+1、系统参数(-D)，如-Ddubbo.protocol.port=20881
+
+2、xml配置
+
+3、property文件
+
+参数名	      作用范围	默认值	   说明	                                  备注
+actives	      consumer	0	       每服务消费者每服务每方法最大并发调用数	      0表示不限制
+
+connections	  consumer	 	       对每个提供者的最大连接数，rmi、http、       dubbo时为1，及复用单链接
+                                   hessian等短连接协议表示限制连接数，
+                                   dubbo等长连接协表示建立的长连接个数
+
+accepts	      provider	0	       服务提供方最大可接受连接数	              0表示不限制
+
+iothreads	  provider	cpu个数+1   io线程池大小(固定大小)	 
+
+threads	      provider	200	       业务线程池大小(固定大小)	 
+
+executes	  provider	0	       服务提供者每服务每方法最大可并行执行请求数	  0表示不限制
+
+tps	          provider	 	       指定时间内（默认60s）最大的可执行次数，注     默认不开启
+                                   意与executes的区别
+
+1、当consumer发起一个请求时，首先经过active limit(参数actives）进行方法级别的限制，其实现方式为
+CHM中存放计数器(AtomicInteger)，请求时加1，请求完成（包括异常）减1,如果超过actives则等待有其他
+请求完成后重试或者超时后失败；
+
+2、从多个连接(connections）中选择一个连接发送数据，对于默认的netty实现来说，由于可以复用连接，默认
+一个连接就可以。不过如果你在压测，且只有一个consumer,一个provider，此时适当的加大connections确实
+能够增强网络传输能力。但线上业务由于有多个consumer多个provider，因此不建议增加connections参数；
+
+3、连接到达provider时（如dubbo的初次连接），首先会判断总连接数是否超限（acceps），超过限制连接将被拒绝；
+
+4、连接成功后，具体的请求交给io thread处理。io threads虽然是处理数据的读写，但io部分为异步，更多的消
+耗的是cpu，因此iothreads默认cpu个数+1是比较合理的设置，不建议调整此参数;
+
+5、数据读取并反序列化以后，交给业务线程池处理，默认情况下线程池为fixed，且排队队列为0(queues)，这种情况
+下，最大并发等于业务线程池大小(threads)，如果希望有请求的堆积能力，可以调整queues参数。如果希望快速失败
+由其他节点处理（官方推荐方式），则不修改queues，只调整threads;
+
+6、execute limit（参数executes）是方法级别的并发限制，原理与actives类似，只是少了等待的过程，即受限后
+立即失败；
+
+7、tps，控制指定时间内（默认60s）的请求数。注意目前dubbo默认没有支持该参数，需要加一个
+META-INF/dubbo/com.alibaba.dubbo.rpc.Filter文件，文件内容为：tps=com.alibaba.dubbo.rpc.filter.TpsLimitFilter
+
+从上面的分析，可以看出如果consumer数*actives>provider数*threads且queues=0，则会存在部分请求无法申请到资源，
+重试也有很大几率失败。 当需要对一个接口的不同方法进行不同的并发控制时使用executes，否则调整threads就可以。
+
+====================================================================
+延迟连接
+延迟连接⽤于减少⻓连接数。当有调⽤发起时，再创建⻓连接。
+<dubbo:protocol name="dubbo" lazy="true" />
+ 注意：该配置只对使⽤⻓连接的 dubbo 协议⽣效。
+
+
+==================================================================
+粘滞连接
+粘滞连接⽤于有状态服务，尽可能让客户端总是向同⼀提供者发起调⽤，除⾮该提供者挂了，再连另⼀台。
+粘滞连接将⾃动开启延迟连接，以减少⻓连接数。和负载均衡有什么区别呢？
+<dubbo:protocol name="dubbo" sticky="true" />
+===================================================================
+令牌验证
+通过令牌验证在注册中⼼控制权限，以决定要不要下发令牌给消费者，可以防⽌消费者绕过注册中⼼访问提供者，另外
+通过注册中⼼可灵活改变授权⽅式，⽽不需修改或升级提供者。具体应用没有理解原理。？
+===================================================================
+https://blog.csdn.net/u012345283/article/details/51789196
+
+https://my.oschina.net/u/146130/blog/1592235
+白名单：好像很有用
+https://blog.csdn.net/qq_35830949/article/details/80626027
+
+https://blog.csdn.net/z15732621582/article/details/81060779
 

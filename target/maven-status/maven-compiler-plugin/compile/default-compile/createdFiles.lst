@@ -1,6 +1,10 @@
 com\cxf\dubbo\service\BookService.class
+com\cxf\dubbo\service\PhoneService.class
 com\cxf\dubbo\service\CallbackService.class
-com\cxf\dubbo\entities\Bike.class
+com\cxf\dubbo\service\UserService.class
+com\cxf\dubbo\entities\Phone.class
 com\cxf\dubbo\entities\Book.class
 com\cxf\dubbo\callBack\CallBackListener.class
+com\cxf\dubbo\entities\Bike.class
 com\cxf\dubbo\service\BikeService.class
+com\cxf\dubbo\entities\User.class
